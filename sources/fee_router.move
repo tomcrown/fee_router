@@ -25,7 +25,6 @@ const EZeroAmount: u64 = 4;
 
 
 // Maximum allowed fee: 10% (1000 basis points)
-// This prevents admin from setting confiscatory fee rates
 const MAX_FEE_BPS: u64 = 1000;
 
 const BPS_DENOMINATOR: u64 = 10000;
@@ -73,12 +72,6 @@ public struct AdminTransferredEvent has copy, drop {
 }
 
 /// Initialize a new fee treasury for a specific token type
-/// 
-/// # Process
-/// 1. Validates fee_bps ≤ MAX_FEE_BPS (10%)
-/// 2. Creates FeeTreasury with zero balance
-/// 3. Sets caller as admin
-/// 4. Shares treasury object globally
 /// 
 /// # Security
 /// - Fee must be within allowed range
