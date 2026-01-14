@@ -6,7 +6,7 @@
 /// 
 /// ## Security Model
 /// - Only admin can withdraw fees or change fee percentage
-/// - Maximum fee capped at 5% to prevent abuse
+/// - Maximum fee capped at 10% to prevent abuse
 /// - Fees are taken from input token, not output
 /// - Protected against zero-amount attacks and overflow
 module fee_router::fee_router;
