@@ -55,6 +55,11 @@ dependencies = [
   { id = "Sui", name = "Sui" },
 ]
 
+[move.toolchain-version]
+compiler-version = "1.61.1"
+edition = "2024.beta"
+flavor = "sui"
+
 [pinned.testnet.fee_router]
 source = { root = true }
 use_environment = "testnet"

@@ -14,6 +14,7 @@ module fee_router::fee_router;
 use sui::coin::{Self, Coin};
 use sui::balance::{Self, Balance};
 use sui::event;
+use sui::clock::Clock;
 use std::type_name::{Self, TypeName};
 
 
@@ -71,7 +72,6 @@ public struct AdminTransferredEvent has copy, drop {
     timestamp_ms: u64,
 }
 
-
 /// Initialize a new fee treasury for a specific token type
 /// 
 /// # Process
@@ -84,11 +84,10 @@ public struct AdminTransferredEvent has copy, drop {
 /// - Fee must be within allowed range
 /// - Treasury is shared, not owned, for permissionless access
 /// 
-public entry fun init_treasury<CoinType>(
+public fun init_treasury<CoinType>(
     fee_bps: u64,
     ctx: &mut TxContext
 ) {
-    // Enforce maximum fee limit
     assert!(fee_bps <= MAX_FEE_BPS, EFeeTooHigh);
     
     let treasury = FeeTreasury<CoinType> {
@@ -100,13 +99,9 @@ public entry fun init_treasury<CoinType>(
         total_volume_processed: 0,
     };
     
-    // Share globally so integrators can use it
     transfer::share_object(treasury);
 }
 
-// ============================================================================
-// Core Fee Collection
-// ============================================================================
 
 /// Take fee from input coin and return remaining amount
 /// 
@@ -118,11 +113,6 @@ public entry fun init_treasury<CoinType>(
 /// 5. Update lifetime statistics
 /// 6. Emit FeeCollectedEvent
 /// 7. Return remaining coin to caller
-/// 
-/// # Parameters
-/// - `treasury`: The fee treasury to collect into
-/// - `coin_in`: The input coin to take fee from
-/// - `clock`: Clock object for accurate timestamps
 /// 
 /// # Returns
 /// Coin with fee deducted (amount_in - fee_amount)
@@ -136,34 +126,28 @@ public entry fun init_treasury<CoinType>(
 public fun take_fee_and_return<CoinIn>(
     treasury: &mut FeeTreasury<CoinIn>,
     mut coin_in: Coin<CoinIn>,
-    clock: &sui::clock::Clock,
+    clock: &Clock,
     ctx: &mut TxContext
 ): Coin<CoinIn> {
     let amount = coin_in.value();
     
-    // Prevent zero-amount transactions
     assert!(amount > 0, EZeroAmount);
     
-    // Calculate fee with proper rounding (rounds down)
     let fee_amount = (amount * treasury.fee_bps) / BPS_DENOMINATOR;
     
-    // Only process if there's actually a fee to collect
-    // (small amounts with low fee_bps might result in zero fee)
     if (fee_amount > 0) {
         let fee_coin = coin_in.split(fee_amount, ctx);
         treasury.balance.join(fee_coin.into_balance());
         
-        // Update lifetime statistics
         treasury.total_fees_collected = treasury.total_fees_collected + fee_amount;
     };
     
     treasury.total_volume_processed = treasury.total_volume_processed + amount;
 
-    // Emit event with proper type information
     event::emit(FeeCollectedEvent {
         treasury_id: object::uid_to_address(&treasury.id),
         user: ctx.sender(),
-        coin_type: type_name::into_string(type_name::get<CoinIn>()),
+        coin_type: type_name::with_defining_ids<CoinIn>(),
         amount_in: amount,
         fee_amount,
         timestamp_ms: clock.timestamp_ms(),
@@ -172,42 +156,9 @@ public fun take_fee_and_return<CoinIn>(
     coin_in
 }
 
-/// Convenience function for simple fee taking without clock
-/// Uses epoch instead of timestamp for simpler integration
-public fun take_fee_simple<CoinIn>(
-    treasury: &mut FeeTreasury<CoinIn>,
-    mut coin_in: Coin<CoinIn>,
-    ctx: &mut TxContext
-): Coin<CoinIn> {
-    let amount = coin_in.value();
-    assert!(amount > 0, EZeroAmount);
-    
-    let fee_amount = (amount * treasury.fee_bps) / BPS_DENOMINATOR;
-    
-    if (fee_amount > 0) {
-        let fee_coin = coin_in.split(fee_amount, ctx);
-        treasury.balance.join(fee_coin.into_balance());
-        treasury.total_fees_collected = treasury.total_fees_collected + fee_amount;
-    };
-    
-    treasury.total_volume_processed = treasury.total_volume_processed + amount;
 
-    event::emit(FeeCollectedEvent {
-        treasury_id: object::uid_to_address(&treasury.id),
-        user: ctx.sender(),
-        coin_type: type_name::into_string(type_name::get<CoinIn>()),
-        amount_in: amount,
-        fee_amount,
-        timestamp_ms: ctx.epoch(), // Using epoch as proxy for timestamp
-    });
 
-    coin_in
-}
-
-// ============================================================================
-// Admin Functions
-// ============================================================================
-
+/// Admin Functions
 /// Update the fee percentage
 /// 
 /// # Security
@@ -215,10 +166,10 @@ public fun take_fee_simple<CoinIn>(
 /// - New fee must be within MAX_FEE_BPS limit
 /// - Emits event for transparency
 /// 
-public entry fun update_fee<CoinType>(
+public fun update_fee<CoinType>(
     treasury: &mut FeeTreasury<CoinType>,
     new_fee_bps: u64,
-    clock: &sui::clock::Clock,
+    clock: &Clock,
     ctx: &mut TxContext
 ) {
     assert!(ctx.sender() == treasury.admin, ENotAdmin);
@@ -243,10 +194,10 @@ public entry fun update_fee<CoinType>(
 /// - Checks sufficient balance before withdrawal
 /// - Emits event for transparency
 /// 
-public entry fun withdraw_fees<CoinType>(
+public fun withdraw_fees<CoinType>(
     treasury: &mut FeeTreasury<CoinType>,
     amount: u64,
-    clock: &sui::clock::Clock,
+    clock: &Clock,
     ctx: &mut TxContext
 ) {
     assert!(ctx.sender() == treasury.admin, ENotAdmin);
@@ -260,7 +211,7 @@ public entry fun withdraw_fees<CoinType>(
     event::emit(FeeWithdrawnEvent {
         treasury_id: object::uid_to_address(&treasury.id),
         admin: treasury.admin,
-        coin_type: type_name::into_string(type_name::get<CoinType>()),
+        coin_type: type_name::with_defining_ids<CoinType>(),
         amount_withdrawn: amount,
         remaining_balance: remaining,
         timestamp_ms: clock.timestamp_ms(),
@@ -275,9 +226,9 @@ public entry fun withdraw_fees<CoinType>(
 /// - Only admin can call
 /// - Convenient for full withdrawals
 /// 
-public entry fun withdraw_all_fees<CoinType>(
+public fun withdraw_all_fees<CoinType>(
     treasury: &mut FeeTreasury<CoinType>,
-    clock: &sui::clock::Clock,
+    clock: &Clock,
     ctx: &mut TxContext
 ) {
     assert!(ctx.sender() == treasury.admin, ENotAdmin);
@@ -295,10 +246,10 @@ public entry fun withdraw_all_fees<CoinType>(
 /// - Prevents transferring to zero address (implicit via Sui address type)
 /// - Emits event for transparency
 /// 
-public entry fun transfer_admin<CoinType>(
+public fun transfer_admin<CoinType>(
     treasury: &mut FeeTreasury<CoinType>,
     new_admin: address,
-    clock: &sui::clock::Clock,
+    clock: &Clock,
     ctx: &mut TxContext
 ) {
     assert!(ctx.sender() == treasury.admin, ENotAdmin);
@@ -314,37 +265,27 @@ public entry fun transfer_admin<CoinType>(
     });
 }
 
-// ============================================================================
-// View Functions
-// ============================================================================
 
-/// Get the current fee percentage in basis points
 public fun get_fee_bps<CoinType>(treasury: &FeeTreasury<CoinType>): u64 {
     treasury.fee_bps
 }
 
-/// Get the current collected fees balance
 public fun get_collected_fees<CoinType>(treasury: &FeeTreasury<CoinType>): u64 {
     treasury.balance.value()
 }
 
-/// Get the admin address
 public fun get_admin<CoinType>(treasury: &FeeTreasury<CoinType>): address {
     treasury.admin
 }
 
-/// Get total fees collected over lifetime
 public fun get_total_fees_collected<CoinType>(treasury: &FeeTreasury<CoinType>): u64 {
     treasury.total_fees_collected
 }
 
-/// Get total volume processed over lifetime
 public fun get_total_volume_processed<CoinType>(treasury: &FeeTreasury<CoinType>): u64 {
     treasury.total_volume_processed
 }
 
-/// Calculate what the fee would be for a given amount
-/// Useful for frontends to show fee estimates
 public fun calculate_fee<CoinType>(
     treasury: &FeeTreasury<CoinType>,
     amount: u64
@@ -352,7 +293,6 @@ public fun calculate_fee<CoinType>(
     (amount * treasury.fee_bps) / BPS_DENOMINATOR
 }
 
-/// Get comprehensive treasury statistics
 public fun get_treasury_stats<CoinType>(
     treasury: &FeeTreasury<CoinType>
 ): (u64, u64, u64, u64, address) {
@@ -365,16 +305,11 @@ public fun get_treasury_stats<CoinType>(
     )
 }
 
-// ============================================================================
-// Constants Getters (for external integration)
-// ============================================================================
 
-/// Get the maximum allowed fee percentage
 public fun max_fee_bps(): u64 {
     MAX_FEE_BPS
 }
 
-/// Get the basis points denominator
 public fun bps_denominator(): u64 {
     BPS_DENOMINATOR
 }
