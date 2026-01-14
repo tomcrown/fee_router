@@ -147,8 +147,44 @@ public fun take_fee_and_return<CoinIn>(
     });
 
     coin_in
+
 }
 
+
+// Take fee from input coin and return remaining amount to sender - For CLI Testing
+#[allow(lint(self_transfer))]
+public fun take_fee_and_return_to_sender<CoinIn>(
+    treasury: &mut FeeTreasury<CoinIn>,
+    mut coin_in: Coin<CoinIn>,
+    clock: &Clock,
+    ctx: &mut TxContext
+) {
+    let amount = coin_in.value();
+    
+    assert!(amount > 0, EZeroAmount);
+    
+    let fee_amount = (amount * treasury.fee_bps) / BPS_DENOMINATOR;
+    
+    if (fee_amount > 0) {
+        let fee_coin = coin_in.split(fee_amount, ctx);
+        treasury.balance.join(fee_coin.into_balance());
+        
+        treasury.total_fees_collected = treasury.total_fees_collected + fee_amount;
+    };
+    
+    treasury.total_volume_processed = treasury.total_volume_processed + amount;
+
+    event::emit(FeeCollectedEvent {
+        treasury_id: object::uid_to_address(&treasury.id),
+        user: ctx.sender(),
+        coin_type: type_name::with_defining_ids<CoinIn>(),
+        amount_in: amount,
+        fee_amount,
+        timestamp_ms: clock.timestamp_ms(),
+    });
+
+    transfer::public_transfer(coin_in, ctx.sender());
+}
 
 
 /// Admin Functions
