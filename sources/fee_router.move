@@ -151,7 +151,8 @@ public fun take_fee_and_return<CoinIn>(
 }
 
 
-// Take fee from input coin and return remaining amount to sender - For CLI Testing
+/// Take fee from input coin and return remaining amount to sender - For CLI Testing
+/// Use `take_fee_and_return` in production
 #[allow(lint(self_transfer))]
 public fun take_fee_and_return_to_sender<CoinIn>(
     treasury: &mut FeeTreasury<CoinIn>,
@@ -272,7 +273,6 @@ public fun withdraw_all_fees<CoinType>(
 /// 
 /// # Security
 /// - Only current admin can call
-/// - Prevents transferring to zero address (implicit via Sui address type)
 /// - Emits event for transparency
 /// 
 public fun transfer_admin<CoinType>(
