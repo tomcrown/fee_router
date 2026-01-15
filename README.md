@@ -1,4 +1,4 @@
-# Sui Fee Router Contract
+# Fee Router Contract
 
 A Sui Move smart contract for automated fee collection on token swaps and transfers. Perfect for DEXs, payment processors, and any application requiring transparent fee management.
 
@@ -370,56 +370,6 @@ Emitted when admin rights are transferred:
 6. **Overflow Protection**: Fee calculations use checked arithmetic
 7. **Zero-Amount Validation**: Prevents gas waste on empty transactions
 8. **Atomic Operations**: Fee collection and balance updates happen atomically
-
-## Integration Guide
-
-### For DEX Developers
-
-```rust
-// Example PTB integration
-public fun swap_with_fee<CoinIn, CoinOut>(
-    treasury: &mut FeeTreasury<CoinIn>,
-    pool: &mut Pool<CoinIn, CoinOut>,
-    coin_in: Coin<CoinIn>,
-    clock: &Clock,
-    ctx: &mut TxContext
-): Coin<CoinOut> {
-    // 1. Collect fee
-    let coin_after_fee = fee_router::take_fee_and_return(
-        treasury,
-        coin_in,
-        clock,
-        ctx
-    );
-
-    // 2. Perform swap with remaining amount
-    pool::swap(pool, coin_after_fee, ctx)
-}
-```
-
-### For Payment Processors
-
-```rust
-// Example payment processing
-public fun process_payment<CoinType>(
-    treasury: &mut FeeTreasury<CoinType>,
-    payment: Coin<CoinType>,
-    merchant: address,
-    clock: &Clock,
-    ctx: &mut TxContext
-) {
-    // Collect platform fee
-    let payment_after_fee = fee_router::take_fee_and_return(
-        treasury,
-        payment,
-        clock,
-        ctx
-    );
-
-    // Transfer to merchant
-    transfer::public_transfer(payment_after_fee, merchant);
-}
-```
 
 ## Contributing
 
